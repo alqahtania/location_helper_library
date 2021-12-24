@@ -7,6 +7,8 @@ import android.os.Bundle
 import android.widget.Toast
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import com.cts.locationhelper.LocationHelper.Companion.ERROR_LOCATION_NO_GPS_AVAILABLE
+import com.cts.locationhelper.LocationHelper.Companion.ERROR_LOCATION_PERMISSION
 
 class MainActivity : AppCompatActivity() {
     private lateinit var locationHelper: LocationHelper
@@ -28,8 +30,15 @@ class MainActivity : AppCompatActivity() {
         locationHelper.getCurrentLocation(
             accuracyInMeters = 19,
             onError = { err ->
-
-        }) { location ->
+                when (err) {
+                    ERROR_LOCATION_PERMISSION -> {
+                        //need to request location permission
+                    }
+                    ERROR_LOCATION_NO_GPS_AVAILABLE -> {
+                        //device doesn't have GPS
+                    }
+                }
+            }) { location ->
             Toast.makeText(
                 this,
                 "lat: ${location.latitude} long: ${location.longitude}",
