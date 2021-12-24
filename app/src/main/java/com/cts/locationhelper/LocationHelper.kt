@@ -2,7 +2,6 @@ package com.cts.locationhelper
 
 import android.Manifest
 import android.annotation.SuppressLint
-import android.app.Activity
 import android.content.Context
 import android.content.pm.PackageManager
 import android.location.Location
@@ -17,7 +16,11 @@ import kotlin.coroutines.CoroutineContext
 import kotlin.coroutines.resume
 import kotlin.coroutines.suspendCoroutine
 
-class LocationHelper(private val context: Context) : CoroutineScope {
+class LocationHelper(private val context: Context, private val intervalMillis : Long = 3000) : CoroutineScope {
+
+    inline fun <T1 : Any, T2 : Any, R : Any> safeLet(p1: T1?, p2: T2?, block: (T1, T2) -> R?): R? {
+        return if (p1 != null && p2 != null) block(p1, p2) else null
+    }
 
     private val job = Job()
     override val coroutineContext: CoroutineContext
@@ -25,64 +28,82 @@ class LocationHelper(private val context: Context) : CoroutineScope {
     private val locationRequestGPS by lazy {
         LocationRequest.create()
             .setPriority(LocationRequest.PRIORITY_HIGH_ACCURACY)
-            .setInterval(3000)
+            .setInterval(intervalMillis)
     }
 
     private val locationRequestNETWORK by lazy {
         LocationRequest.create()
             .setPriority(LocationRequest.PRIORITY_LOW_POWER)
-            .setInterval(3000)
+            .setInterval(intervalMillis)
     }
-//    private lateinit var fusedLocationProviderClient : FusedLocationProviderClient
+    private lateinit var fusedLocationProviderClient: FusedLocationProviderClient
+    private lateinit var locationCallback: LocationCallback
 
-    fun getCurrentLocation(onError : (Int) -> Unit, onSuccess : (Location) -> Unit) = launch{
-        if(locationPermissionGranted()){
-            val location = async { getLocationUpdates() }.await()
+
+    fun getCurrentLocation(ageInMinutes : Int = 0, accuracyInMeters : Int, onError: (Int) -> Unit, onSuccess: (Location) -> Unit) = launch {
+        if (locationPermissionGranted()) {
+            val location = async { getLocationUpdates(ageInMinutes, accuracyInMeters) }.await()
             Log.d("???", "final getCurrentLocation $location")
-            withContext(Dispatchers.Main){
+            withContext(Dispatchers.Main) {
                 location?.let {
                     onSuccess(it)
-                }
+                } ?: onError(ERROR_LOCATION_NULL)
             }
-        }else{
+        } else {
             onError(ERROR_LOCATION_PERMISSION)
         }
     }
 
-
+    fun unsubscribeLocationHelper(){
+        safeLet(fusedLocationProviderClient, locationCallback){ provider, callback->
+            provider.removeLocationUpdates(callback)
+        }
+    }
 
     @SuppressLint("MissingPermission")
-    private suspend fun getLocationUpdates() : Location? = suspendCoroutine{ continuation ->
-        val fusedLocationProviderClient = LocationServices.getFusedLocationProviderClient(context)
+    private suspend fun getLocationUpdates(ageInMinutes : Int, accuracyInMeters : Int): Location? = suspendCoroutine { continuation ->
+        fusedLocationProviderClient = LocationServices.getFusedLocationProviderClient(context)
         val locationManager = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
-        val callback = object : LocationCallback(){
+        locationCallback = object : LocationCallback() {
             override fun onLocationResult(locationResult: LocationResult) {
-                Log.d("???", "location callback running on thread -> ${Thread.currentThread().name}")
                 Log.d("????", "outside accuracy location received: ${locationResult.lastLocation}")
                 val lastLocation = locationResult.lastLocation
                 lastLocation?.let { location ->
                     Log.d("???", "how old is the location in minutes -> ${ageMinutes(location)}")
-                    if(ageMinutes(location) == 0 && location.accuracy < 30){
+                    if (ageMinutes(location) <= ageInMinutes && location.accuracy <= accuracyInMeters) {
                         fusedLocationProviderClient.removeLocationUpdates(this)
-                        Log.d("????", "inside accuracylocation received: ${locationResult.lastLocation}")
+                        Log.d(
+                            "????",
+                            "inside accuracylocation received: ${locationResult.lastLocation}"
+                        )
                         continuation.resume(location)
                     }
                 }
             }
         }
-        when{
+        when {
             locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER) -> {
-                fusedLocationProviderClient.requestLocationUpdates(locationRequestGPS, callback, Looper.getMainLooper())
+                fusedLocationProviderClient.requestLocationUpdates(
+                    locationRequestGPS,
+                    locationCallback,
+                    Looper.getMainLooper()
+                )
             }
             else -> {
                 continuation.resume(null)
             }
         }
-
     }
-    private fun locationPermissionGranted() : Boolean{
-        return ActivityCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
-                && ActivityCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+
+    private fun locationPermissionGranted(): Boolean {
+        return ActivityCompat.checkSelfPermission(
+            context,
+            Manifest.permission.ACCESS_FINE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
+                && ActivityCompat.checkSelfPermission(
+            context,
+            Manifest.permission.ACCESS_COARSE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
     }
 
     private fun ageMinutes(last: Location): Int {
@@ -95,8 +116,9 @@ class LocationHelper(private val context: Context) : CoroutineScope {
     }
 
 
-    companion object{
+    companion object {
         const val ERROR_LOCATION_PERMISSION = 1
+        const val ERROR_LOCATION_NULL = 2
     }
 
 }

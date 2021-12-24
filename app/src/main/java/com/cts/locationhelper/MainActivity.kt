@@ -9,6 +9,7 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 
 class MainActivity : AppCompatActivity() {
+    private lateinit var locationHelper: LocationHelper
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
@@ -22,18 +23,20 @@ class MainActivity : AppCompatActivity() {
 
     }
 
-    private fun getCurrentLocation(){
-        LocationHelper(this)
-            .getCurrentLocation({err ->
+    private fun getCurrentLocation() {
+        locationHelper = LocationHelper(this)
+        locationHelper.getCurrentLocation(
+            accuracyInMeters = 19,
+            onError = { err ->
 
-            }){ location ->
-                Toast.makeText(
-                    this,
-                    "lat: ${location.latitude} long: ${location.longitude}",
-                    Toast.LENGTH_SHORT
-                ).show()
+        }) { location ->
+            Toast.makeText(
+                this,
+                "lat: ${location.latitude} long: ${location.longitude}",
+                Toast.LENGTH_SHORT
+            ).show()
 
-            }
+        }
     }
 
     override fun onRequestPermissionsResult(
@@ -41,10 +44,10 @@ class MainActivity : AppCompatActivity() {
         permissions: Array<out String>,
         grantResults: IntArray
     ) {
-        if(requestCode == REQUEST_CODE_PERMISSIONS){
-            if(locationPermissionGranted()){
+        if (requestCode == REQUEST_CODE_PERMISSIONS) {
+            if (locationPermissionGranted()) {
                 getCurrentLocation()
-            }else{
+            } else {
                 Toast.makeText(
                     this,
                     "We need permission",
@@ -61,6 +64,10 @@ class MainActivity : AppCompatActivity() {
         ) == PackageManager.PERMISSION_GRANTED
     }
 
+    override fun onPause() {
+        super.onPause()
+        locationHelper?.unsubscribeLocationHelper()
+    }
 
     companion object {
         private val REQUIRED_PERMISSIONS = arrayOf(
