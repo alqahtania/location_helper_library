@@ -8,7 +8,6 @@ import android.location.Location
 import android.location.LocationManager
 import android.os.Looper
 import android.os.SystemClock
-import android.util.Log
 import androidx.core.app.ActivityCompat
 import com.google.android.gms.location.*
 import kotlinx.coroutines.*
@@ -43,7 +42,6 @@ class LocationHelper(private val context: Context, private val intervalMillis : 
     fun getCurrentLocation(ageInMinutes : Int = 0, accuracyInMeters : Int, onError: (Int) -> Unit, onSuccess: (Location) -> Unit) = launch {
         if (locationPermissionGranted()) {
             val location = async { getLocationUpdates(ageInMinutes, accuracyInMeters) }.await()
-            Log.d("???", "final getCurrentLocation $location")
             withContext(Dispatchers.Main) {
                 location?.let {
                     onSuccess(it)
@@ -68,17 +66,10 @@ class LocationHelper(private val context: Context, private val intervalMillis : 
         val locationManager = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
         locationCallback = object : LocationCallback() {
             override fun onLocationResult(locationResult: LocationResult) {
-                Log.d("???", "location provider -> ${locationResult.lastLocation.provider}")
-                Log.d("????", "outside accuracy location received: ${locationResult.lastLocation}")
                 val lastLocation = locationResult.lastLocation
                 lastLocation?.let { location ->
-                    Log.d("???", "how old is the location in minutes -> ${ageMinutes(location)}")
                     if (ageMinutes(location) <= ageInMinutes && location.accuracy <= accuracyInMeters) {
                         fusedLocationProviderClient.removeLocationUpdates(this)
-                        Log.d(
-                            "????",
-                            "inside accuracylocation received: ${locationResult.lastLocation}"
-                        )
                         continuation.resume(location)
                     }
                 }
