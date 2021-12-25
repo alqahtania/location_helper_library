@@ -45,7 +45,7 @@ afterEvaluate {
                 from components.release
 
                 groupId = 'com.github.alqahtania'
-                artifactId = 'location_helper'
+                artifactId = 'location_helper_library'
                 version = '1.0'
             }
         }
