@@ -15,7 +15,12 @@ import kotlin.coroutines.CoroutineContext
 import kotlin.coroutines.resume
 import kotlin.coroutines.suspendCoroutine
 
-class LocationHelper(private val context: Context, private val intervalMillis : Long = 3000) : CoroutineScope {
+class LocationHelper(private val context: Context,
+                     private val accuracyInMeters : Int,
+                     private val intervalMillis : Long = 3000,
+                     private val fastestIntervalMillis : Long = 1000,
+                     private val ageInMinutes : Int = 0,
+                     private val keepReceivingUpdates : Boolean = false) : CoroutineScope {
 
     private fun <T1 : Any, T2 : Any, R : Any> safeLet(p1: T1?, p2: T2?, block: (T1, T2) -> R?): R? {
         return if (p1 != null && p2 != null) block(p1, p2) else null
@@ -28,20 +33,16 @@ class LocationHelper(private val context: Context, private val intervalMillis : 
         LocationRequest.create()
             .setPriority(LocationRequest.PRIORITY_HIGH_ACCURACY)
             .setInterval(intervalMillis)
+            .setFastestInterval(fastestIntervalMillis)
     }
 
-    private val locationRequestNETWORK by lazy {
-        LocationRequest.create()
-            .setPriority(LocationRequest.PRIORITY_LOW_POWER)
-            .setInterval(intervalMillis)
-    }
     private lateinit var fusedLocationProviderClient: FusedLocationProviderClient
     private lateinit var locationCallback: LocationCallback
 
 
-    fun getCurrentLocation(ageInMinutes : Int = 0, accuracyInMeters : Int, onError: (Int) -> Unit, onSuccess: (Location) -> Unit) = launch {
+    fun requestLocation(onError: (Int) -> Unit, onSuccess: (Location) -> Unit) = launch {
         if (locationPermissionGranted()) {
-            val location = async { getLocationUpdates(ageInMinutes, accuracyInMeters) }.await()
+            val location = async { getLocationUpdates() }.await()
             withContext(Dispatchers.Main) {
                 location?.let {
                     onSuccess(it)
@@ -61,7 +62,7 @@ class LocationHelper(private val context: Context, private val intervalMillis : 
     }
 
     @SuppressLint("MissingPermission")
-    private suspend fun getLocationUpdates(ageInMinutes : Int, accuracyInMeters : Int): Location? = suspendCoroutine { continuation ->
+    private suspend fun getLocationUpdates(): Location? = suspendCoroutine { continuation ->
         fusedLocationProviderClient = LocationServices.getFusedLocationProviderClient(context)
         val locationManager = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
         locationCallback = object : LocationCallback() {
@@ -69,7 +70,9 @@ class LocationHelper(private val context: Context, private val intervalMillis : 
                 val lastLocation = locationResult.lastLocation
                 lastLocation?.let { location ->
                     if (ageMinutes(location) <= ageInMinutes && location.accuracy <= accuracyInMeters) {
-                        fusedLocationProviderClient.removeLocationUpdates(this)
+                        if(!keepReceivingUpdates){
+                            fusedLocationProviderClient.removeLocationUpdates(this)
+                        }
                         continuation.resume(location)
                     }
                 }
