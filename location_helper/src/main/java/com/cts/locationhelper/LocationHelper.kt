@@ -15,12 +15,13 @@ import kotlin.coroutines.CoroutineContext
 import kotlin.coroutines.resume
 import kotlin.coroutines.suspendCoroutine
 
-class LocationHelper(private val context: Context,
-                     private val accuracyInMeters : Int,
-                     private val intervalMillis : Long = 3000,
-                     private val fastestIntervalMillis : Long = 1000,
-                     private val ageInMinutes : Int = 0,
-                     private val keepReceivingUpdates : Boolean = false) : CoroutineScope {
+class LocationHelper(
+    private val context: Context,
+    private val accuracyInMeters: Int,
+    private val intervalMillis: Long = 3000,
+    private val fastestIntervalMillis: Long = 1000,
+    private val ageInMinutes: Int = 0
+) : CoroutineScope {
 
     private fun <T1 : Any, T2 : Any, R : Any> safeLet(p1: T1?, p2: T2?, block: (T1, T2) -> R?): R? {
         return if (p1 != null && p2 != null) block(p1, p2) else null
@@ -49,20 +50,21 @@ class LocationHelper(private val context: Context,
                 } ?: onError(ERROR_LOCATION_NO_GPS_AVAILABLE)
             }
         } else {
-            withContext(Dispatchers.Main){
+            withContext(Dispatchers.Main) {
                 onError(ERROR_LOCATION_PERMISSION)
             }
         }
     }
 
-    fun unsubscribeLocationHelper(){
-        safeLet(fusedLocationProviderClient, locationCallback){ provider, callback->
+    fun unsubscribeLocationHelper() {
+        safeLet(fusedLocationProviderClient, locationCallback) { provider, callback ->
             provider.removeLocationUpdates(callback)
         }
     }
 
     @SuppressLint("MissingPermission")
     private suspend fun getLocationUpdates(): Location? = suspendCoroutine { continuation ->
+        var resumed = false
         fusedLocationProviderClient = LocationServices.getFusedLocationProviderClient(context)
         val locationManager = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
         locationCallback = object : LocationCallback() {
@@ -70,10 +72,11 @@ class LocationHelper(private val context: Context,
                 val lastLocation = locationResult.lastLocation
                 lastLocation?.let { location ->
                     if (ageMinutes(location) <= ageInMinutes && location.accuracy <= accuracyInMeters) {
-                        if(!keepReceivingUpdates){
-                            fusedLocationProviderClient.removeLocationUpdates(this)
+                        fusedLocationProviderClient.removeLocationUpdates(this)
+                        if(!resumed){
+                            continuation.resume(location)
+                            resumed = true
                         }
-                        continuation.resume(location)
                     }
                 }
             }
